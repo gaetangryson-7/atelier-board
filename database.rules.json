@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": true,
+        ".write": true,
+        "stickies": { "$id": { ".validate": "newData.hasChildren(['x','y','text','color']) && newData.child('text').val().length < 600" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maquette Board Miro · Collectif PM</title>
+  <!-- Google Fonts : Montserrat & Kaushan Script (alignés avec la charte du support) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Font Awesome pour les pictogrammes d'animation -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --slate-deep: #233742;
+      --slate-mid: #435866;
+      --cyan-accent: #3BB4C6;
+      --cyan-dark: #1D8A9B;
+      --bg-canvas: #F2F5F7;
+      --sticky-yellow: #FFF3A1;
+      --sticky-green: #B9F0C4;
+      --sticky-pink: #FFC4C4;
+      --sticky-blue: #BCE8FF;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Montserrat', sans-serif;
+      background-color: var(--bg-canvas);
+      color: var(--slate-deep);
+    }
+
+    /* Fond grille à points type Miro */
+    #viewport {
+      position: fixed;
+      inset: 0;
+      top: 104px;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(#C8D4DC 1.5px, transparent 1.5px);
+      background-size: 28px 28px;
+      cursor: grab;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    #viewport.panning {
+      cursor: grabbing;
+    }
+
+    /* Calque monde transformé par pan & zoom */
+    #world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    #world.smooth-camera {
+      transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Typographie signature */
+    .font-script {
+      font-family: 'Kaushan Script', cursive;
+    }
+
+    /* Signature graphique : angle supérieur droit arrondi asymétrique */
+    .asymmetric-frame {
+      border-radius: 12px 36px 12px 12px;
+    }
+    .asymmetric-header {
+      border-radius: 10px 34px 0 0;
+    }
+    .asymmetric-card {
+      border-radius: 8px 24px 8px 8px;
+    }
+
+    /* Style des frames Miro */
+    .miro-frame {
+      position: absolute;
+      background: #FFFFFF;
+      border: 2px solid #D5E1E7;
+      box-shadow: 0 12px 32px rgba(35, 55, 66, 0.08);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .frame-header {
+      background: var(--slate-deep);
+      color: #FFFFFF;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 4px solid var(--cyan-accent);
+      flex-shrink: 0;
+    }
+
+    /* Post-it interactifs */
+    .sticky-note {
+      position: absolute;
+      padding: 14px 16px;
+      border-radius: 4px 16px 4px 4px;
+      box-shadow: 0 6px 14px rgba(35, 55, 66, 0.14), 0 1px 3px rgba(35, 55, 66, 0.08);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.35;
+      color: #1B2B34;
+      cursor: grab;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: box-shadow 0.15s ease, transform 0.12s ease;
+      z-index: 20;
+    }
+
+    .sticky-note:hover {
+      box-shadow: 0 12px 24px rgba(35, 55, 66, 0.22);
+      z-index: 40;
+    }
+
+    .sticky-note.dragging {
+      cursor: grabbing;
+      box-shadow: 0 18px 34px rgba(35, 55, 66, 0.28);
+      transform: scale(1.03) rotate(1deg);
+      z-index: 100;
+    }
+
+    .sticky-note.editing {
+      cursor: text;
+      outline: 2px solid var(--slate-deep);
+      z-index: 110;
+    }
+
+    .sticky-note .sticky-text {
+      user-select: text;
+      outline: none;
+      word-break: break-word;
+    }
+
+    .sticky-yellow { background-color: var(--sticky-yellow); border-bottom: 3px solid #E5D46B; }
+    .sticky-green  { background-color: var(--sticky-green);  border-bottom: 3px solid #8CD69B; }
+    .sticky-pink   { background-color: var(--sticky-pink);   border-bottom: 3px solid #E89B9B; }
+    .sticky-blue   { background-color: var(--sticky-blue);   border-bottom: 3px solid #8CCAE8; }
+
+    .sticky-actions {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .sticky-note:hover .sticky-actions {
+      opacity: 1;
+    }
+
+    /* Emplacements vides pré-positionnés (matrice Atelier 2) */
+    .sticky-placeholder {
+      border: 2px dashed #B8C9D3;
+      background: #F8FAFB;
+      border-radius: 4px 12px 4px 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8BA0AD;
+      font-size: 12px;
+      font-weight: 600;
+      min-height: 76px;
+      transition: all 0.15s ease;
+    }
+    .sticky-placeholder:hover {
+      border-color: var(--cyan-accent);
+      background: #EEF8FA;
+      color: var(--cyan-dark);
+    }
+
+    /* Champs éditables sur les cartes livrables */
+    [contenteditable="true"] {
+      user-select: text;
+      cursor: text;
+    }
+    [contenteditable="true"]:focus {
+      outline: 2px solid var(--cyan-accent);
+      border-radius: 4px;
+      background-color: rgba(59, 180, 198, 0.08);
+    }
+
+    /* Scrollbar discrète pour la barre de navigation horizontale sur petits écrans */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body>
+
+  <!-- BARRE SUPÉRIEURE TYPE MIRO (FIXE) -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+    <!-- Ligne 1 : Titre, Légende post-it, Outils d'animation & Contrôles de zoom -->
+    <div class="h-14 px-4 flex items-center justify-between gap-3 border-b border-slate-100">
+      <!-- Identité du Board -->
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-lg rounded-tr-2xl bg-[#233742] flex items-center justify-center text-[#3BB4C6] shrink-0 shadow-sm">
+          <i class="fa-solid fa-chalkboard-user text-base"></i>
+        </div>
+        <div class="truncate">
+          <h1 class="text-sm sm:text-base font-extrabold text-[#233742] tracking-tight truncate">
+            Board Miro · Mise au vert Collectif PM <span class="text-[#1D8A9B] font-bold">(14h00 – 18h00)</span>
+          </h1>
+        </div>
+      </div>
+
+      <!-- Légende interactive des couleurs de post-it -->
+      <div class="hidden xl:flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Légende :</span>
+        <button onclick="quickSpawnSticky('yellow')" title="Cliquer pour ajouter un post-it jaune" class="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white transition text-xs font-semibold text-slate-700">
+          <span class="w-3.5 h-3.5 rounded-sm bg-[#FFF3A1] border border-amber-300 inline-block"></span>
+          Constats / Idées
+        </button>
+        <button onclick="quickSpawnSticky('green')" title="Cliquer pour ajouter un post-it vert" class="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white transition text-xs font-semibold text-slate-700">
+          <span class="w-3.5 h-3.5 rounded-sm bg-[#B9F0C4] border border-emerald-400 inline-block"></span>
+          Forces / Impacts
+        </button>
+        <button onclick="quickSpawnSticky('pink')" title="Cliquer pour ajouter un post-it rose" class="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white transition text-xs font-semibold text-slate-700">
+          <span class="w-3.5 h-3.5 rounded-sm bg-[#FFC4C4] border border-rose-300 inline-block"></span>
+          Irritants / Risques
+        </button>
+        <button onclick="quickSpawnSticky('blue')" title="Cliquer pour ajouter un post-it bleu" class="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white transition text-xs font-semibold text-slate-700">
+          <span class="w-3.5 h-3.5 rounded-sm bg-[#BCE8FF] border border-sky-300 inline-block"></span>
+          Actions / Engagements
+        </button>
+      </div>
+
+      <!-- Outils droite : Ajouter Post-it, Timer, Zoom -->
+      <div class="flex items-center gap-2 shrink-0">
+        <!-- Bouton Ajouter Post-it -->
+        <button id="btn-open-sticky-modal" class="flex items-center gap-2 bg-[#3BB4C6] hover:bg-[#2EA2B4] text-[#233742] font-bold text-xs sm:text-sm px-3.5 py-2 rounded-lg rounded-tr-2xl shadow-sm transition cursor-pointer">
+          <i class="fa-solid fa-note-sticky"></i>
+          <span>+ Ajouter un post-it</span>
+        </button>
+
+        <!-- Widget Minuteur d'animation -->
+        <div class="relative">
+          <button id="btn-toggle-timer" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-[#233742] font-bold text-xs sm:text-sm px-3 py-2 rounded-lg border border-slate-200 transition cursor-pointer">
+            <i class="fa-regular fa-clock text-[#1D8A9B]"></i>
+            <span id="timer-display" class="font-mono tabular-nums">20:00</span>
+          </button>
+
+          <!-- Popover Minuteur -->
+          <div id="timer-popover" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-xl rounded-tr-3xl shadow-xl border border-slate-200 p-4 z-50">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-[#233742]">Minuteur Atelier</span>
+              <span id="timer-status-badge" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">Prêt</span>
+            </div>
+            <div class="text-center py-2 mb-3 bg-[#F5F8FA] rounded-lg border border-slate-200">
+              <span id="timer-big-display" class="text-3xl font-extrabold font-mono text-[#233742]">20:00</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 mb-3">
+              <button onclick="setTimerMinutes(10)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">10 min</button>
+              <button onclick="setTimerMinutes(15)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">15 min</button>
+              <button onclick="setTimerMinutes(20)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">20 min</button>
+              <button onclick="setTimerMinutes(40)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">40 min</button>
+              <button onclick="setTimerMinutes(50)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">50 min</button>
+              <button onclick="setTimerMinutes(55)" class="py-1 text-xs font-bold bg-slate-100 hover:bg-[#E6F4F6] text-[#233742] rounded">55 min</button>
+            </div>
+            <div class="flex gap-2">
+              <button id="btn-timer-start" onclick="toggleTimerRun()" class="flex-1 py-2 bg-[#233742] hover:bg-[#192830] text-white text-xs font-bold rounded-lg transition">
+                <i class="fa-solid fa-play mr-1"></i> Démarrer
+              </button>
+              <button onclick="resetTimer()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-[#233742] text-xs font-bold rounded-lg transition" title="Réinitialiser">
+                <i class="fa-solid fa-rotate-left"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contrôles de Zoom -->
+        <div class="hidden sm:flex items-center bg-slate-100 rounded-lg border border-slate-200 p-0.5">
+          <button onclick="zoomBy(0.82)" class="w-8 h-8 flex items-center justify-center hover:bg-white rounded-md text-[#233742] font-bold transition" title="Zoom arrière (-)">
+            <i class="fa-solid fa-minus text-xs"></i>
+          </button>
+          <button onclick="zoomToOne()" id="zoom-level-label" class="px-2.5 h-8 text-xs font-extrabold text-[#233742] hover:bg-white rounded-md transition min-w-[54px]" title="Zoom 100%">
+            15%
+          </button>
+          <button onclick="zoomBy(1.22)" class="w-8 h-8 flex items-center justify-center hover:bg-white rounded-md text-[#233742] font-bold transition" title="Zoom avant (+)">
+            <i class="fa-solid fa-plus text-xs"></i>
+          </button>
+          <div class="w-px h-5 bg-slate-300 mx-0.5"></div>
+          <button onclick="focusTarget('overview')" class="px-2.5 h-8 text-xs font-bold text-[#1D8A9B] hover:bg-white rounded-md transition flex items-center gap-1" title="Vue d'ensemble du board">
+            <i class="fa-solid fa-expand text-xs"></i>
+            <span>Fit</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ligne 2 : Barre de navigation rapide par Frame -->
+    <nav class="h-12 px-4 bg-[#F8FAFC] flex items-center gap-2 overflow-x-auto no-scrollbar">
+      <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 shrink-0 mr-1">Navigation :</span>
+      <button data-nav="overview" onclick="focusTarget('overview')" class="nav-pill active shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#233742] text-white transition cursor-pointer">
+        <i class="fa-solid fa-border-all mr-1.5 text-[#3BB4C6]"></i>Vue globale
+      </button>
+      <button data-nav="frame1" onclick="focusTarget('frame1')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        1. Intro (14h00)
+      </button>
+      <button data-nav="frame2" onclick="focusTarget('frame2')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        2. Career Path (14h20)
+      </button>
+      <button data-nav="frame3" onclick="focusTarget('frame3')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        3. Orga & Transverses (15h10)
+      </button>
+      <button data-nav="frame4" onclick="focusTarget('frame4')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        4. Vision 2027 (16h20)
+      </button>
+      <button data-nav="frame5" onclick="focusTarget('frame5')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        5. IA (17h00)
+      </button>
+      <button data-nav="frame6" onclick="focusTarget('frame6')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#233742] border border-slate-200 transition cursor-pointer">
+        6. Clôture (17h40)
+      </button>
+      <button data-nav="banners" onclick="focusTarget('banners')" class="nav-pill shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#E6F4F6] text-[#1D8A9B] border border-slate-200 transition cursor-pointer">
+        <i class="fa-solid fa-layer-group mr-1"></i>Synthèse & Frigo
+      </button>
+    </nav>
+  </header>
+
+  <!-- ZONE CANVAS INFINIE (PAN & ZOOM) -->
+  <main id="viewport">
+    <div id="world">
+
+      <!-- =====================================================================
+           FRAME 1 : 14h00 – 14h20 · Fiertés, freins et cap 2027 (20 min)
+           Coordonnées : x=120, y=120, w=1180, h=1080
+      ====================================================================== -->
+      <section id="frame1" class="miro-frame asymmetric-frame" style="left: 120px; top: 120px; width: 1180px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 1 · 14h00 – 14h20 · 20 min
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Fiertés,</span> freins et cap 2027
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p><i class="fa-solid fa-eye-slash text-[#3BB4C6] mr-1.5"></i>Mode Privé : 8 min</p>
+            <p class="mt-0.5"><i class="fa-solid fa-object-group text-[#3BB4C6] mr-1.5"></i>Regroupement : 12 min</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 grid grid-cols-4 gap-4 bg-[#F8FAFC]">
+          <!-- Colonne 1 : Fiertés -->
+          <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-emerald-400">
+              <span class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-extrabold text-xs">01</span>
+              <h3 class="text-sm font-extrabold text-[#233742] leading-snug">
+                Ce qui me rend fier de notre collectif Product
+              </h3>
+            </div>
+            <div class="flex-1 rounded-lg bg-emerald-50/40 border border-dashed border-emerald-200 p-2"></div>
+          </div>
+
+          <!-- Colonne 2 : Freins -->
+          <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-rose-400">
+              <span class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-extrabold text-xs">02</span>
+              <h3 class="text-sm font-extrabold text-[#233742] leading-snug">
+                Ce qui nous empêche aujourd'hui d'être encore meilleurs
+              </h3>
+            </div>
+            <div class="flex-1 rounded-lg bg-rose-50/40 border border-dashed border-rose-200 p-2"></div>
+          </div>
+
+          <!-- Colonne 3 : Horizon 2027 -->
+          <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+            <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-sky-400">
+              <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-extrabold text-xs">03</span>
+              <h3 class="text-sm font-extrabold text-[#233742] leading-snug">
+                Si nous sommes fiers fin 2027, qu'aurons-nous changé ?
+              </h3>
+            </div>
+            <div class="flex-1 rounded-lg bg-sky-50/40 border border-dashed border-sky-200 p-2"></div>
+          </div>
+
+          <!-- Zone droite : Regroupement par thèmes -->
+          <div class="bg-[#EEF6F8] rounded-xl border-2 border-dashed border-[#3BB4C6] p-4 flex flex-col">
+            <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#BFE3E8]">
+              <h3 class="text-sm font-extrabold uppercase tracking-wide text-[#233742]">
+                <i class="fa-solid fa-layer-group text-[#1D8A9B] mr-1.5"></i>Regroupement par thèmes
+              </h3>
+            </div>
+            <div class="flex-1 flex flex-col gap-3">
+              <div class="flex-1 bg-white/80 rounded-lg border border-dashed border-slate-300 p-3">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-[#1D8A9B] bg-[#E6F4F6] px-2 py-0.5 rounded">Thème A · Coopération</span>
+              </div>
+              <div class="flex-1 bg-white/80 rounded-lg border border-dashed border-slate-300 p-3">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-[#1D8A9B] bg-[#E6F4F6] px-2 py-0.5 rounded">Thème B · Impact & Valeur</span>
+              </div>
+              <div class="flex-1 bg-white/80 rounded-lg border border-dashed border-slate-300 p-3">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-[#1D8A9B] bg-[#E6F4F6] px-2 py-0.5 rounded">Thème C · Organisation</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           FRAME 2 : 14h20 – 15h10 · Atelier 1 : Nouveaux Career Path (50 min)
+           Coordonnées : x=1440, y=120, w=1520, h=1080
+      ====================================================================== -->
+      <section id="frame2" class="miro-frame asymmetric-frame" style="left: 1440px; top: 120px; width: 1520px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 2 · 14h20 – 15h10 · 50 min · Atelier 1
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Nouveaux</span> Career Path : Compréhension & Projection
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p>15 min Décryptage · 15 min Individuel · 20 min Partage</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 grid grid-cols-12 gap-5 bg-[#F8FAFC]">
+          <!-- ZONE A : Décryptage collectif (Gauche, 5 cols) -->
+          <div class="col-span-5 bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-white bg-[#233742] px-3 py-1 rounded-md">
+                Zone A · Décryptage collectif (15 min)
+              </span>
+            </div>
+
+            <!-- Schéma visuel de bascule des binômes vers 3 filières -->
+            <div class="bg-[#F4F8FA] rounded-xl border border-slate-200 p-4">
+              <div class="flex items-center justify-between gap-2">
+                <!-- Modèle actuel -->
+                <div class="flex-1 bg-white p-3 rounded-lg border border-slate-300 shadow-xs">
+                  <p class="text-[10px] font-extrabold uppercase text-slate-400">Modèle actuel</p>
+                  <p class="text-sm font-extrabold text-[#233742] mt-0.5">Binômes PM</p>
+                  <p class="text-xs text-slate-600 mt-1">Digital PM + Business PM</p>
+                </div>
+
+                <!-- Flèche -->
+                <div class="flex flex-col items-center px-1 text-[#1D8A9B]">
+                  <i class="fa-solid fa-arrow-right-long text-xl"></i>
+                  <span class="text-[10px] font-bold uppercase mt-0.5">Cible</span>
+                </div>
+
+                <!-- 3 Filières -->
+                <div class="flex-1 bg-[#233742] text-white p-3 rounded-lg rounded-tr-2xl shadow-xs">
+                  <p class="text-[10px] font-extrabold uppercase text-[#3BB4C6]">3 Filières cibles</p>
+                  <div class="flex flex-wrap gap-1 mt-1.5">
+                    <span class="text-[11px] font-bold bg-white/10 px-2 py-0.5 rounded">Business</span>
+                    <span class="text-[11px] font-bold bg-white/10 px-2 py-0.5 rounded">Product</span>
+                    <span class="text-[11px] font-extrabold bg-[#3BB4C6] text-[#233742] px-2 py-0.5 rounded">Engineering</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Callout hybride -->
+              <div class="mt-3 bg-[#E6F4F6] border border-[#BFE3E8] rounded-lg px-3 py-2 flex items-center gap-2">
+                <i class="fa-solid fa-compass text-[#1D8A9B]"></i>
+                <p class="text-xs font-bold text-[#233742]">
+                  Positionnement hybride : filière <span class="text-[#1D8A9B] underline">Engineering</span> + forte dimension <span class="text-[#1D8A9B] underline">Product Management</span>.
+                </p>
+              </div>
+            </div>
+
+            <!-- Mur libre compréhension -->
+            <div class="flex-1 flex flex-col">
+              <h3 class="text-sm font-extrabold text-[#233742] mb-2">
+                « Ce que j'ai compris des nouveaux Career Path (et mes questions ouvertes) »
+              </h3>
+              <div class="flex-1 rounded-xl bg-amber-50/40 border border-dashed border-amber-300 p-3"></div>
+            </div>
+          </div>
+
+          <!-- ZONE B : Ma projection individuelle (Droite, 7 cols) -->
+          <div class="col-span-7 bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-[#233742] bg-[#3BB4C6] px-3 py-1 rounded-md">
+                Zone B · Ma projection individuelle (15 min + 20 min partage)
+              </span>
+              <span class="text-xs font-semibold text-slate-500">Livrable : 3 évolutions majeures de posture</span>
+            </div>
+
+            <div class="flex-1 grid grid-cols-3 gap-4">
+              <!-- Col 1 -->
+              <div class="bg-[#F8FAFC] rounded-xl border border-slate-200 p-3.5 flex flex-col">
+                <h4 class="text-xs font-extrabold text-[#233742] pb-2.5 mb-3 border-b-2 border-[#3BB4C6] leading-snug">
+                  1. Ce qui évolue dans ma posture au quotidien (entre Engineering et Product Management)
+                </h4>
+                <div class="flex-1 rounded-lg border border-dashed border-slate-300 bg-white/60"></div>
+              </div>
+
+              <!-- Col 2 -->
+              <div class="bg-[#F8FAFC] rounded-xl border border-slate-200 p-3.5 flex flex-col">
+                <h4 class="text-xs font-extrabold text-[#233742] pb-2.5 mb-3 border-b-2 border-sky-400 leading-snug">
+                  2. Les compétences clés que je veux développer en priorité
+                </h4>
+                <div class="flex-1 rounded-lg border border-dashed border-slate-300 bg-white/60"></div>
+              </div>
+
+              <!-- Col 3 -->
+              <div class="bg-[#F8FAFC] rounded-xl border border-slate-200 p-3.5 flex flex-col">
+                <h4 class="text-xs font-extrabold text-[#233742] pb-2.5 mb-3 border-b-2 border-emerald-400 leading-snug">
+                  3. Ce que j'attends de mes binômes (Business / Product / Engineering)
+                </h4>
+                <div class="flex-1 rounded-lg border border-dashed border-slate-300 bg-white/60"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           FRAME 3 : 15h10 – 16h05 · Atelier 2 : Organisation & Sujets transverses
+           Coordonnées : x=3100, y=120, w=1680, h=1080
+      ====================================================================== -->
+      <section id="frame3" class="miro-frame asymmetric-frame" style="left: 3100px; top: 120px; width: 1680px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 3 · 15h10 – 16h05 · 55 min · Atelier 2
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Organisation</span> produit & Sujets transverses
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p>Bloc A : 20 min Diagnostic · Bloc B : 35 min Matrice transverses</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 flex gap-5 bg-[#F8FAFC]">
+          <!-- BLOC A : Diagnostic de l'organisation produit (Gauche, 640px) -->
+          <div class="w-[640px] shrink-0 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-white bg-[#233742] px-3 py-1 rounded-md">
+                Bloc A · Diagnostic de l'organisation produit (20 min)
+              </span>
+            </div>
+
+            <!-- Deux encarts de hauteur égale -->
+            <div class="flex-1 grid grid-cols-2 gap-4">
+              <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+                <h3 class="text-sm font-extrabold text-emerald-700 pb-2.5 mb-3 border-b-2 border-emerald-400 flex items-center gap-2">
+                  <i class="fa-solid fa-circle-check"></i>
+                  Ce qui fonctionne bien (à préserver)
+                </h3>
+                <div class="flex-1 rounded-lg bg-emerald-50/40 border border-dashed border-emerald-200"></div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+                <h3 class="text-sm font-extrabold text-rose-700 pb-2.5 mb-3 border-b-2 border-rose-400 flex items-center gap-2">
+                  <i class="fa-solid fa-triangle-exclamation"></i>
+                  Ce qui fonctionne moins bien (irritants & silos)
+                </h3>
+                <div class="flex-1 rounded-lg bg-rose-50/40 border border-dashed border-rose-200"></div>
+              </div>
+            </div>
+
+            <!-- Encart bas livrable -->
+            <div class="h-[290px] bg-[#E6F4F6] rounded-xl border-2 border-[#3BB4C6] p-4 flex flex-col">
+              <h3 class="text-sm font-extrabold uppercase tracking-wide text-[#233742] mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-bullseye text-[#1D8A9B]"></i>
+                Nos 3 principes structurants & 2 évolutions à tester
+              </h3>
+              <div class="flex-1 rounded-lg bg-white/80 border border-dashed border-[#3BB4C6]"></div>
+            </div>
+          </div>
+
+          <!-- BLOC B : Matrice des 6 sujets transverses & composants communs (Droite) -->
+          <div class="flex-1 bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-[#233742] bg-[#3BB4C6] px-3 py-1 rounded-md">
+                Bloc B · Matrice des 6 sujets transverses & composants communs (35 min)
+              </span>
+              <span class="text-xs font-semibold text-slate-500">Glissez ou double-cliquez dans les cases</span>
+            </div>
+
+            <!-- Tableau structuré 7 lignes x 5 colonnes -->
+            <div class="flex-1 border border-slate-300 rounded-xl overflow-hidden flex flex-col">
+              <!-- En-tête du tableau -->
+              <div class="grid grid-cols-12 bg-[#233742] text-white text-xs font-extrabold uppercase tracking-wider">
+                <div class="col-span-3 p-3 border-r border-slate-600">Sujet transverse</div>
+                <div class="col-span-3 p-3 border-r border-slate-600">Objectif / Valeur attendue</div>
+                <div class="col-span-2 p-3 border-r border-slate-600">Qui porte / anime ?</div>
+                <div class="col-span-2 p-3 border-r border-slate-600">Qui contribue ?</div>
+                <div class="col-span-2 p-3">Format & fréquence</div>
+              </div>
+
+              <!-- Lignes de la matrice -->
+              <div class="flex-1 divide-y divide-slate-200 flex flex-col">
+                <!-- Ligne 1 : Animation Run -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-rotate text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Run</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 2 : Animation Build -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-hammer text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Build</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 3 : Animation Ops -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-gears text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Ops</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 4 : Animation Fronts -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-window-maximize text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Fronts</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 5 : Animation Perf -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-gauge-high text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Perf</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 6 : Animation Communication -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-white">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-slate-50">
+                    <span class="w-8 h-8 rounded-lg bg-[#3BB4C6] text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-bullhorn text-xs"></i></span>
+                    <span class="text-xs font-extrabold text-[#233742]">Animation Communication</span>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+
+                <!-- Ligne 7 : (Bonus) Composants communs -->
+                <div class="flex-1 grid grid-cols-12 items-stretch bg-[#F4F9FA]">
+                  <div class="col-span-3 p-2.5 border-r border-slate-200 flex items-center gap-2.5 bg-[#E6F4F6]">
+                    <span class="w-8 h-8 rounded-lg bg-[#233742] text-[#3BB4C6] flex items-center justify-center shrink-0"><i class="fa-solid fa-cubes text-xs"></i></span>
+                    <div>
+                      <span class="text-[10px] font-extrabold uppercase text-[#1D8A9B] block">Bonus</span>
+                      <span class="text-xs font-extrabold text-[#233742]">Composants communs</span>
+                    </div>
+                  </div>
+                  <div class="col-span-3 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Post-it</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Pilote</div></div>
+                  <div class="col-span-2 p-1.5 border-r border-slate-200"><div class="sticky-placeholder h-full">+ Collectif</div></div>
+                  <div class="col-span-2 p-1.5"><div class="sticky-placeholder h-full">+ Rituel</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           FRAME 4 : 16h20 – 17h00 · Atelier 3 : Vision Produit 2027 (40 min)
+           Coordonnées : x=4920, y=120, w=1480, h=1080
+      ====================================================================== -->
+      <section id="frame4" class="miro-frame asymmetric-frame" style="left: 4920px; top: 120px; width: 1480px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 4 · 16h20 – 17h00 · 40 min · Atelier 3
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Vision</span> Produit 2027 : De l'impact aux objectifs
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p>Entonnoir : Impacts → Ambitions → 3 à 5 Objectifs collectifs</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 flex items-stretch gap-4 bg-[#F8FAFC]">
+          <!-- ÉTAPE 1 : Basculer du Delivery à la Valeur -->
+          <div class="w-[410px] shrink-0 bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
+            <div class="bg-[#233742] text-white px-3 py-2 rounded-lg">
+              <span class="text-[11px] font-extrabold uppercase text-[#3BB4C6] block">Étape 1</span>
+              <h3 class="text-sm font-extrabold">Basculer du Delivery à la Valeur</h3>
+            </div>
+
+            <div class="flex-1 bg-emerald-50/40 rounded-xl border border-emerald-200 p-3 flex flex-col">
+              <h4 class="text-xs font-extrabold uppercase text-emerald-800 mb-2">
+                <i class="fa-solid fa-users mr-1"></i>Nos impacts attendus côté utilisateurs
+              </h4>
+              <div class="flex-1 rounded-lg border border-dashed border-emerald-300 bg-white/60"></div>
+            </div>
+
+            <div class="flex-1 bg-emerald-50/40 rounded-xl border border-emerald-200 p-3 flex flex-col">
+              <h4 class="text-xs font-extrabold uppercase text-emerald-800 mb-2">
+                <i class="fa-solid fa-building mr-1"></i>Nos impacts attendus côté organisation
+              </h4>
+              <div class="flex-1 rounded-lg border border-dashed border-emerald-300 bg-white/60"></div>
+            </div>
+          </div>
+
+          <!-- Chevron transition -->
+          <div class="flex items-center justify-center text-[#3BB4C6]">
+            <i class="fa-solid fa-chevron-right text-3xl"></i>
+          </div>
+
+          <!-- ÉTAPE 2 : Nos ambitions -->
+          <div class="w-[410px] shrink-0 bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
+            <div class="bg-[#233742] text-white px-3 py-2 rounded-lg">
+              <span class="text-[11px] font-extrabold uppercase text-[#3BB4C6] block">Étape 2</span>
+              <h3 class="text-sm font-extrabold">Structurer nos ambitions 2027</h3>
+            </div>
+
+            <div class="flex-1 bg-amber-50/40 rounded-xl border border-amber-200 p-3 flex flex-col">
+              <h4 class="text-xs font-extrabold uppercase text-amber-900 mb-2">
+                <i class="fa-solid fa-handshake mr-1"></i>Ambitions communes à tout le collectif
+              </h4>
+              <div class="flex-1 rounded-lg border border-dashed border-amber-300 bg-white/60"></div>
+            </div>
+
+            <div class="flex-1 bg-amber-50/40 rounded-xl border border-amber-200 p-3 flex flex-col">
+              <h4 class="text-xs font-extrabold uppercase text-amber-900 mb-2">
+                <i class="fa-solid fa-puzzle-piece mr-1"></i>Spécificités par produit / composant
+              </h4>
+              <div class="flex-1 rounded-lg border border-dashed border-amber-300 bg-white/60"></div>
+            </div>
+          </div>
+
+          <!-- Chevron transition -->
+          <div class="flex items-center justify-center text-[#3BB4C6]">
+            <i class="fa-solid fa-chevron-right text-3xl"></i>
+          </div>
+
+          <!-- ÉTAPE 3 : Cap 2027 (Livrable : 5 cartes objectifs) -->
+          <div class="flex-1 bg-[#E6F4F6] rounded-xl border-2 border-[#3BB4C6] p-4 flex flex-col">
+            <div class="bg-[#3BB4C6] text-[#233742] px-3.5 py-2 rounded-lg mb-3 flex items-center justify-between">
+              <div>
+                <span class="text-[11px] font-extrabold uppercase block">Étape 3 · Livrable final</span>
+                <h3 class="text-sm font-extrabold">Cap 2027 : Nos objectifs collectifs</h3>
+              </div>
+              <span class="text-[11px] font-bold bg-white/80 px-2 py-0.5 rounded">Cliquer pour éditer</span>
+            </div>
+
+            <div class="flex-1 flex flex-col justify-between gap-2.5">
+              <!-- 5 cartes numérotées -->
+              <div class="bg-white asymmetric-card border border-[#BFE3E8] p-3 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded bg-[#233742] text-[#3BB4C6] text-xs font-extrabold">Objectif collectif #1</span>
+                  <p contenteditable="true" class="text-xs font-extrabold text-[#233742] flex-1">Ex : Réduire de 30% le délai de mise en marché des parcours clés</p>
+                </div>
+                <p contenteditable="true" class="text-xs text-slate-600 pl-1"><strong class="text-[#1D8A9B]">Outcome / Indicateur :</strong> Lead time idée → prod & taux d'adoption à J+30</p>
+              </div>
+
+              <div class="bg-white asymmetric-card border border-[#BFE3E8] p-3 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded bg-[#233742] text-[#3BB4C6] text-xs font-extrabold">Objectif collectif #2</span>
+                  <p contenteditable="true" class="text-xs font-extrabold text-[#233742] flex-1">Ex : Garantir une expérience unifiée sur nos composants transverses</p>
+                </div>
+                <p contenteditable="true" class="text-xs text-slate-600 pl-1"><strong class="text-[#1D8A9B]">Outcome / Indicateur :</strong> Score NPS utilisateur & taux de réutilisation composants</p>
+              </div>
+
+              <div class="bg-white asymmetric-card border border-[#BFE3E8] p-3 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded bg-[#233742] text-[#3BB4C6] text-xs font-extrabold">Objectif collectif #3</span>
+                  <p contenteditable="true" class="text-xs font-extrabold text-[#233742] flex-1">Intitulé de l'objectif collectif #3 à définir...</p>
+                </div>
+                <p contenteditable="true" class="text-xs text-slate-600 pl-1"><strong class="text-[#1D8A9B]">Outcome / Indicateur :</strong> Métrique de mesure de valeur...</p>
+              </div>
+
+              <div class="bg-white asymmetric-card border border-[#BFE3E8] p-3 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded bg-[#233742] text-[#3BB4C6] text-xs font-extrabold">Objectif collectif #4</span>
+                  <p contenteditable="true" class="text-xs font-extrabold text-[#233742] flex-1">Intitulé de l'objectif collectif #4 à définir...</p>
+                </div>
+                <p contenteditable="true" class="text-xs text-slate-600 pl-1"><strong class="text-[#1D8A9B]">Outcome / Indicateur :</strong> Métrique de mesure de valeur...</p>
+              </div>
+
+              <div class="bg-white asymmetric-card border border-[#BFE3E8] p-3 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded bg-[#233742] text-[#3BB4C6] text-xs font-extrabold">Objectif collectif #5</span>
+                  <p contenteditable="true" class="text-xs font-extrabold text-[#233742] flex-1">Intitulé de l'objectif collectif #5 (optionnel)...</p>
+                </div>
+                <p contenteditable="true" class="text-xs text-slate-600 pl-1"><strong class="text-[#1D8A9B]">Outcome / Indicateur :</strong> Métrique de mesure de valeur...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           FRAME 5 : 17h00 – 17h40 · Atelier 4 : IA, ambition produits et métier
+           Coordonnées : x=6540, y=120, w=1520, h=1080
+      ====================================================================== -->
+      <section id="frame5" class="miro-frame asymmetric-frame" style="left: 6540px; top: 120px; width: 1520px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 5 · 17h00 – 17h40 · 40 min · Atelier 4
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Ambition IA :</span> Produits & Pratiques métier
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p>Livrables : 1 ambition IA · 3 pistes · 1 à 2 expérimentations</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 flex gap-5 bg-[#F8FAFC]">
+          <!-- Gauche : 3 colonnes d'idéation (915px) -->
+          <div class="w-[915px] shrink-0 grid grid-cols-3 gap-4">
+            <!-- Col 1 -->
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-[#3BB4C6]">
+                <span class="w-8 h-8 rounded-lg bg-[#E6F4F6] text-[#1D8A9B] flex items-center justify-center"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                <div>
+                  <h3 class="text-sm font-extrabold text-[#233742]">Transformer nos produits</h3>
+                  <p class="text-[11px] text-slate-500">Irritants, nouveaux services, usages</p>
+                </div>
+              </div>
+              <div class="flex-1 rounded-lg bg-slate-50 border border-dashed border-slate-200"></div>
+            </div>
+
+            <!-- Col 2 -->
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-sky-400">
+                <span class="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center"><i class="fa-solid fa-compass-drafting"></i></span>
+                <div>
+                  <h3 class="text-sm font-extrabold text-[#233742]">Transformer nos pratiques PM</h3>
+                  <p class="text-[11px] text-slate-500">Discovery, Delivery, pilotage</p>
+                </div>
+              </div>
+              <div class="flex-1 rounded-lg bg-slate-50 border border-dashed border-slate-200"></div>
+            </div>
+
+            <!-- Col 3 -->
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <div class="flex items-center gap-2 pb-3 mb-3 border-b-2 border-rose-400">
+                <span class="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center"><i class="fa-solid fa-shield-halved"></i></span>
+                <div>
+                  <h3 class="text-sm font-extrabold text-[#233742]">Limites, risques & qualité</h3>
+                  <p class="text-[11px] text-slate-500">Garde-fous à anticiper</p>
+                </div>
+              </div>
+              <div class="flex-1 rounded-lg bg-rose-50/30 border border-dashed border-rose-200"></div>
+            </div>
+          </div>
+
+          <!-- Droite : Zone de décision (Matrice 2x2 + 2 Expérimentations prioritaires) -->
+          <div class="flex-1 flex flex-col gap-4">
+            <!-- Matrice 2x2 -->
+            <div class="h-[510px] bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-extrabold uppercase tracking-wider text-white bg-[#233742] px-2.5 py-1 rounded">
+                  Matrice de priorisation
+                </span>
+                <span class="text-[11px] font-bold text-[#1D8A9B]">Impact valeur ↑ / Facilité →</span>
+              </div>
+
+              <div class="flex-1 relative border-l-2 border-b-2 border-[#233742] ml-5 mb-5 grid grid-cols-2 grid-rows-2">
+                <!-- Label Axe Y -->
+                <span class="absolute -left-7 top-1/2 -translate-y-1/2 -rotate-90 text-[11px] font-extrabold uppercase tracking-wider text-[#233742] whitespace-nowrap">
+                  Impact Valeur ↑
+                </span>
+                <!-- Label Axe X -->
+                <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-extrabold uppercase tracking-wider text-[#233742] whitespace-nowrap">
+                  Facilité de lancement →
+                </span>
+
+                <!-- Quadrant Haut-Gauche -->
+                <div class="border-r border-b border-dashed border-slate-300 p-2.5 bg-amber-50/30">
+                  <span class="text-[10px] font-extrabold uppercase text-amber-800 bg-amber-100 px-2 py-0.5 rounded">Paris Stratégiques</span>
+                </div>
+                <!-- Quadrant Haut-Droite -->
+                <div class="border-b border-dashed border-slate-300 p-2.5 bg-emerald-50/50">
+                  <span class="text-[10px] font-extrabold uppercase text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">Quick Wins (Priorité)</span>
+                </div>
+                <!-- Quadrant Bas-Gauche -->
+                <div class="border-r border-dashed border-slate-300 p-2.5 bg-slate-50">
+                  <span class="text-[10px] font-extrabold uppercase text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded">Plus tard</span>
+                </div>
+                <!-- Quadrant Bas-Droite -->
+                <div class="p-2.5 bg-sky-50/30">
+                  <span class="text-[10px] font-extrabold uppercase text-sky-800 bg-sky-100 px-2 py-0.5 rounded">À creuser</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2 Expérimentations prioritaires -->
+            <div class="flex-1 flex flex-col gap-3">
+              <div class="flex-1 bg-[#E6F4F6] asymmetric-card border-2 border-[#3BB4C6] p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-extrabold uppercase text-[#233742] bg-[#3BB4C6] px-2.5 py-0.5 rounded">
+                    Expérimentation prioritaire #1
+                  </span>
+                  <span class="text-[11px] font-bold text-[#1D8A9B]">Sponsor & Périmètre</span>
+                </div>
+                <p contenteditable="true" class="text-sm font-bold text-[#233742] bg-white/90 rounded-lg p-2.5 border border-[#BFE3E8]">
+                  Ex : Assistant IA de synthèse des retours utilisateurs & rédaction de specs Discovery
+                </p>
+              </div>
+
+              <div class="flex-1 bg-[#E6F4F6] asymmetric-card border-2 border-[#3BB4C6] p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-extrabold uppercase text-[#233742] bg-[#3BB4C6] px-2.5 py-0.5 rounded">
+                    Expérimentation prioritaire #2
+                  </span>
+                  <span class="text-[11px] font-bold text-[#1D8A9B]">Sponsor & Périmètre</span>
+                </div>
+                <p contenteditable="true" class="text-sm font-bold text-[#233742] bg-white/90 rounded-lg p-2.5 border border-[#BFE3E8]">
+                  À sélectionner ensemble à l'issue du vote sur la matrice...
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           FRAME 6 : 17h40 – 18h00 · Clôture : Notre contrat collectif 2027 (20 min)
+           Coordonnées : x=8200, y=120, w=1280, h=1080
+      ====================================================================== -->
+      <section id="frame6" class="miro-frame asymmetric-frame" style="left: 8200px; top: 120px; width: 1280px; height: 1080px;">
+        <div class="frame-header asymmetric-header">
+          <div>
+            <span class="inline-block bg-[#3BB4C6] text-[#233742] text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-md mb-1.5">
+              Frame 6 · 17h40 – 18h00 · 20 min · Clôture
+            </span>
+            <h2 class="text-2xl font-extrabold uppercase tracking-wide">
+              <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mr-1.5">Notre contrat</span> collectif 2027
+            </h2>
+          </div>
+          <div class="text-right text-xs text-slate-300 font-medium">
+            <p>10 min Tour de table · 10 min Formalisation des 5 engagements</p>
+          </div>
+        </div>
+
+        <div class="p-6 flex-1 flex flex-col gap-5 bg-[#F8FAFC]">
+          <!-- Partie haute : 3 colonnes individuelles -->
+          <div class="h-[440px] grid grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <h3 class="text-sm font-extrabold text-rose-700 pb-2.5 mb-3 border-b-2 border-rose-400">
+                01 · « Je souhaite que nous arrêtions… »
+              </h3>
+              <div class="flex-1 rounded-lg bg-rose-50/30 border border-dashed border-rose-200"></div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <h3 class="text-sm font-extrabold text-emerald-700 pb-2.5 mb-3 border-b-2 border-emerald-400">
+                02 · « Je souhaite que nous commencions… »
+              </h3>
+              <div class="flex-1 rounded-lg bg-emerald-50/30 border border-dashed border-emerald-200"></div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+              <h3 class="text-sm font-extrabold text-sky-700 pb-2.5 mb-3 border-b-2 border-sky-400">
+                03 · « Je m'engage personnellement à… »
+              </h3>
+              <div class="flex-1 rounded-lg bg-sky-50/30 border border-dashed border-sky-200"></div>
+            </div>
+          </div>
+
+          <!-- Partie basse : Grande carte centrale Cyan / Ardoise -->
+          <div class="flex-1 bg-[#233742] asymmetric-frame border-4 border-[#3BB4C6] p-6 flex flex-col justify-between shadow-lg">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <span class="bg-[#3BB4C6] text-[#233742] font-extrabold text-xs uppercase px-3 py-1 rounded-md">
+                  Acte fondateur
+                </span>
+                <h3 class="text-xl font-extrabold uppercase tracking-wide text-white">
+                  Les <span class="font-script text-[#3BB4C6] text-3xl capitalize font-normal mx-1">5 engagements</span> du collectif Product pour 2027
+                </h3>
+              </div>
+              <span class="text-xs text-[#3BB4C6] font-semibold">Cliquer sur chaque ligne pour rédiger en direct</span>
+            </div>
+
+            <div class="flex-1 flex flex-col justify-between gap-2.5">
+              <div class="flex items-center gap-3 bg-white/10 border border-white/15 rounded-lg px-4 py-2.5">
+                <span class="w-7 h-7 rounded-md bg-[#3BB4C6] text-[#233742] font-extrabold text-sm flex items-center justify-center shrink-0">#1</span>
+                <p contenteditable="true" class="text-sm font-semibold text-white flex-1">Engagement collectif #1 : Piloter nos produits par l'impact utilisateur plutôt que par le volume de delivery.</p>
+              </div>
+              <div class="flex items-center gap-3 bg-white/10 border border-white/15 rounded-lg px-4 py-2.5">
+                <span class="w-7 h-7 rounded-md bg-[#3BB4C6] text-[#233742] font-extrabold text-sm flex items-center justify-center shrink-0">#2</span>
+                <p contenteditable="true" class="text-sm font-semibold text-white flex-1">Engagement collectif #2 : Co-porter nos sujets transverses et composants communs avec des règles du jeu claires.</p>
+              </div>
+              <div class="flex items-center gap-3 bg-white/10 border border-white/15 rounded-lg px-4 py-2.5">
+                <span class="w-7 h-7 rounded-md bg-[#3BB4C6] text-[#233742] font-extrabold text-sm flex items-center justify-center shrink-0">#3</span>
+                <p contenteditable="true" class="text-sm font-semibold text-slate-200 flex-1">Engagement collectif #3 à formaliser ensemble...</p>
+              </div>
+              <div class="flex items-center gap-3 bg-white/10 border border-white/15 rounded-lg px-4 py-2.5">
+                <span class="w-7 h-7 rounded-md bg-[#3BB4C6] text-[#233742] font-extrabold text-sm flex items-center justify-center shrink-0">#4</span>
+                <p contenteditable="true" class="text-sm font-semibold text-slate-200 flex-1">Engagement collectif #4 à formaliser ensemble...</p>
+              </div>
+              <div class="flex items-center gap-3 bg-white/10 border border-white/15 rounded-lg px-4 py-2.5">
+                <span class="w-7 h-7 rounded-md bg-[#3BB4C6] text-[#233742] font-extrabold text-sm flex items-center justify-center shrink-0">#5</span>
+                <p contenteditable="true" class="text-sm font-semibold text-slate-200 flex-1">Engagement collectif #5 à formaliser ensemble...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           BANDEAUX PERMANENTS DU BAS (SUR TOUTE LA LARGEUR SOUS LES 6 FRAMES)
+           Coordonnées : y=1280, h=420
+      ====================================================================== -->
+      <!-- Bandeau Gauche : Parking Lot / Frigo (x=120, y=1280, w=2800, h=420) -->
+      <section id="banner-frigo" class="miro-frame asymmetric-frame" style="left: 120px; top: 1280px; width: 2800px; height: 420px;">
+        <div class="frame-header asymmetric-header" style="background: #435866;">
+          <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg bg-[#3BB4C6] text-[#233742] flex items-center justify-center">
+              <i class="fa-solid fa-snowflake text-lg"></i>
+            </span>
+            <div>
+              <h2 class="text-xl font-extrabold uppercase tracking-wide">
+                Parking Lot / <span class="font-script text-[#3BB4C6] text-2xl capitalize font-normal">Frigo</span>
+              </h2>
+              <p class="text-xs text-slate-200">Sujets importants hors-périmètre de l'atelier à replanifier ultérieurement</p>
+            </div>
+          </div>
+          <span class="text-xs font-bold uppercase tracking-wider bg-white/15 px-3 py-1 rounded">Zone permanente</span>
+        </div>
+        <div class="flex-1 p-5 bg-[#F8FAFC] flex items-center">
+          <div class="w-full h-full rounded-xl border-2 border-dashed border-slate-300 bg-white/70 p-4"></div>
+        </div>
+      </section>
+
+      <!-- Bandeau Droit : Synthèse & Décisions 2027 (x=3060, y=1280, w=6420, h=420) -->
+      <section id="banner-synthese" class="miro-frame asymmetric-frame" style="left: 3060px; top: 1280px; width: 6420px; height: 420px;">
+        <div class="frame-header asymmetric-header">
+          <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg bg-[#3BB4C6] text-[#233742] flex items-center justify-center">
+              <i class="fa-solid fa-trophy text-lg"></i>
+            </span>
+            <div>
+              <h2 class="text-xl font-extrabold uppercase tracking-wide">
+                Synthèse & <span class="font-script text-[#3BB4C6] text-2xl capitalize font-normal">Décisions 2027</span>
+              </h2>
+              <p class="text-xs text-slate-300">Glissez-déposez ici les livrables validés à la fin de chaque séquence</p>
+            </div>
+          </div>
+          <span class="text-xs font-bold uppercase tracking-wider bg-[#3BB4C6] text-[#233742] px-3 py-1 rounded">Fil rouge de l'après-midi</span>
+        </div>
+
+        <div class="flex-1 p-5 bg-[#F4F9FA] grid grid-cols-5 gap-5">
+          <div class="bg-white rounded-xl border border-[#BFE3E8] p-4 flex flex-col">
+            <span class="text-xs font-extrabold uppercase text-[#1D8A9B] mb-2">Synthèse Atelier 1 · Career Path</span>
+            <div class="flex-1 rounded-lg border border-dashed border-[#3BB4C6] bg-[#F8FCFD] p-2 text-xs text-slate-400 font-semibold">
+              • 3 évolutions de posture PM<br/>• Compétences prioritaires
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-[#BFE3E8] p-4 flex flex-col">
+            <span class="text-xs font-extrabold uppercase text-[#1D8A9B] mb-2">Synthèse Atelier 2 · Orga & Transverses</span>
+            <div class="flex-1 rounded-lg border border-dashed border-[#3BB4C6] bg-[#F8FCFD] p-2 text-xs text-slate-400 font-semibold">
+              • 3 principes structurants<br/>• Pilotes des 6 animations & 2 tests
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-[#BFE3E8] p-4 flex flex-col">
+            <span class="text-xs font-extrabold uppercase text-[#1D8A9B] mb-2">Synthèse Atelier 3 · Vision 2027</span>
+            <div class="flex-1 rounded-lg border border-dashed border-[#3BB4C6] bg-[#F8FCFD] p-2 text-xs text-slate-400 font-semibold">
+              • 3 à 5 objectifs collectifs<br/>• Indicateurs d'impact (Outcomes)
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-[#BFE3E8] p-4 flex flex-col">
+            <span class="text-xs font-extrabold uppercase text-[#1D8A9B] mb-2">Synthèse Atelier 4 · Ambition IA</span>
+            <div class="flex-1 rounded-lg border border-dashed border-[#3BB4C6] bg-[#F8FCFD] p-2 text-xs text-slate-400 font-semibold">
+              • Ambition IA commune<br/>• 1 à 2 expérimentations lancées
+            </div>
+          </div>
+
+          <div class="bg-[#233742] rounded-xl border-2 border-[#3BB4C6] p-4 flex flex-col text-white">
+            <span class="text-xs font-extrabold uppercase text-[#3BB4C6] mb-2">Clôture · Contrat Collectif 2027</span>
+            <div class="flex-1 rounded-lg border border-dashed border-[#3BB4C6]/60 bg-white/5 p-2 text-xs text-slate-300 font-semibold">
+              • Les 5 engagements signés par le collectif Product
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           CALQUE DES POST-IT DRAGGABLES (AU-DESSUS DE TOUTES LES FRAMES)
+      ====================================================================== -->
+      <div id="sticky-layer"></div>
+
+    </div>
+  </main>
+
+  <!-- MINI-MAP DE REPÉRAGE EN BAS À DROITE -->
+  <div id="minimap" class="fixed bottom-4 right-4 z-40 w-56 h-28 bg-white/95 backdrop-blur border border-slate-300 rounded-xl shadow-lg p-2 hidden md:block cursor-pointer" title="Cliquer pour naviguer sur le board">
+    <div id="minimap-content" class="relative w-full h-full bg-slate-100 rounded overflow-hidden">
+      <!-- Représentations miniatures des 6 frames + 2 bandeaux -->
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 1.2%; top: 6.7%; width: 12.3%; height: 60%;"></div>
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 15.0%; top: 6.7%; width: 15.8%; height: 60%;"></div>
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 32.3%; top: 6.7%; width: 17.5%; height: 60%;"></div>
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 51.2%; top: 6.7%; width: 15.4%; height: 60%;"></div>
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 68.1%; top: 6.7%; width: 15.8%; height: 60%;"></div>
+      <div class="absolute bg-[#233742]/80 rounded-[2px]" style="left: 85.4%; top: 6.7%; width: 13.3%; height: 60%;"></div>
+      <!-- Bandeaux bas -->
+      <div class="absolute bg-[#435866]/70 rounded-[2px]" style="left: 1.2%; top: 71.1%; width: 29.1%; height: 23.3%;"></div>
+      <div class="absolute bg-[#3BB4C6]/80 rounded-[2px]" style="left: 31.8%; top: 71.1%; width: 66.9%; height: 23.3%;"></div>
+      <!-- Rectangle viewport -->
+      <div id="minimap-viewport" class="absolute border-2 border-[#3BB4C6] bg-[#3BB4C6]/20 pointer-events-none"></div>
+    </div>
+  </div>
+
+  <!-- AIDE DISCRÈTE EN BAS À GAUCHE -->
+  <div class="fixed bottom-4 left-4 z-40 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-md px-3.5 py-2 text-xs text-slate-600 hidden lg:flex items-center gap-3">
+    <span><i class="fa-solid fa-hand text-[#1D8A9B] mr-1"></i>Glisser le fond : <strong>Déplacer</strong></span>
+    <span class="text-slate-300">|</span>
+    <span><i class="fa-solid fa-magnifying-glass text-[#1D8A9B] mr-1"></i>Molette : <strong>Zoomer</strong></span>
+    <span class="text-slate-300">|</span>
+    <span><i class="fa-solid fa-pen text-[#1D8A9B] mr-1"></i>Double-clic post-it : <strong>Éditer</strong></span>
+  </div>
+
+  <!-- MODALE D'AJOUT DE POST-IT -->
+  <div id="sticky-modal" class="hidden fixed inset-0 z-50 bg-[#233742]/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white asymmetric-frame border border-slate-200 shadow-2xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-extrabold text-[#233742]">Nouveau post-it</h3>
+        <button id="btn-close-sticky-modal" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Choisir la couleur</label>
+        <div class="grid grid-cols-2 gap-2" id="modal-color-picker">
+          <button type="button" data-color="yellow" class="color-choice selected flex items-center gap-2 p-2.5 rounded-lg border-2 border-[#233742] bg-[#FFF3A1] text-xs font-bold text-[#233742]">
+            <i class="fa-solid fa-check"></i> Jaune · Constat / Idée
+          </button>
+          <button type="button" data-color="green" class="color-choice flex items-center gap-2 p-2.5 rounded-lg border-2 border-transparent bg-[#B9F0C4] text-xs font-bold text-[#233742]">
+            Vert · Force / Impact
+          </button>
+          <button type="button" data-color="pink" class="color-choice flex items-center gap-2 p-2.5 rounded-lg border-2 border-transparent bg-[#FFC4C4] text-xs font-bold text-[#233742]">
+            Rose · Irritant / Risque
+          </button>
+          <button type="button" data-color="blue" class="color-choice flex items-center gap-2 p-2.5 rounded-lg border-2 border-transparent bg-[#BCE8FF] text-xs font-bold text-[#233742]">
+            Bleu · Action / Cap
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-5">
+        <label for="modal-sticky-text" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Texte du post-it</label>
+        <textarea id="modal-sticky-text" rows="3" placeholder="Saisissez votre idée, constat ou engagement..." class="w-full rounded-xl border border-slate-300 p-3 text-sm font-semibold text-[#233742] focus:outline-none focus:border-[#3BB4C6]"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button id="btn-cancel-sticky" class="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Annuler</button>
+        <button id="btn-confirm-sticky" class="px-5 py-2 rounded-lg rounded-tr-2xl bg-[#3BB4C6] hover:bg-[#2EA2B4] text-[#233742] text-xs font-extrabold shadow-sm">
+          Poser sur le board
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION (REMPLACE TOUT ALERT()) -->
+  <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 bg-[#233742] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg border border-[#3BB4C6] opacity-0 pointer-events-none transition-opacity duration-300">
+    Message
+  </div>
+
+  <script>
+    /**
+     * =========================================================================
+     * 1. DONNÉES INITIALES DES POST-IT (COORDONNÉES CALIBRÉES PAR FRAME)
+     * =========================================================================
+     */
+    const INITIAL_STICKIES = [
+      // --- FRAME 1 : Intro (x=120..1300) ---
+      // Col 1 : Fiertés (Vert)
+      { id: 's1', x: 162, y: 315, w: 232, h: 112, color: 'green', text: 'Entraide forte entre les binômes PM' },
+      { id: 's2', x: 162, y: 445, w: 232, h: 112, color: 'green', text: 'Culture orientée utilisateur et terrain' },
+      { id: 's3', x: 162, y: 575, w: 232, h: 112, color: 'green', text: 'Capacité d’adaptation face aux changements' },
+
+      // Col 2 : Freins (Rose)
+      { id: 's4', x: 448, y: 315, w: 232, h: 112, color: 'pink', text: 'Dépendances inter-équipes parfois lourdes' },
+      { id: 's5', x: 448, y: 445, w: 232, h: 112, color: 'pink', text: 'Trop de temps passé en run et arbitrages courts' },
+      { id: 's6', x: 448, y: 575, w: 232, h: 112, color: 'pink', text: 'Périmètres et responsabilités parfois flous' },
+
+      // Col 3 : Cap 2027 (Bleu)
+      { id: 's7', x: 734, y: 315, w: 232, h: 112, color: 'blue', text: 'Des produits pilotés par l’impact réel (outcomes)' },
+      { id: 's8', x: 734, y: 445, w: 232, h: 112, color: 'blue', text: 'Un collectif soudé au-delà des silos produits' },
+      { id: 's9', x: 734, y: 575, w: 232, h: 112, color: 'blue', text: 'L’IA intégrée concrètement dans nos usages' },
+
+      // --- FRAME 2 : Career Path (x=1440..2960) ---
+      // Zone A : Compréhension (Jaune)
+      { id: 's10', x: 1495, y: 635, w: 255, h: 118, color: 'yellow', text: 'Clarifier la frontière opérationnelle entre Product et Engineering' },
+      { id: 's11', x: 1770, y: 635, w: 255, h: 118, color: 'yellow', text: 'On garde la vision produit tout en portant l’excellence tech' },
+      { id: 's12', x: 1495, y: 775, w: 255, h: 118, color: 'yellow', text: 'Question : quel impact sur les critères d’évolution et grades ?' },
+
+      // Zone B : 3 colonnes projection
+      { id: 's13', x: 2092, y: 410, w: 248, h: 120, color: 'yellow', text: 'Moins de relais administratif, plus de co-conception tech/produit' },
+      { id: 's14', x: 2092, y: 550, w: 248, h: 120, color: 'blue', text: 'Assumer pleinement notre double culture Engineering & Product' },
+
+      { id: 's15', x: 2374, y: 410, w: 248, h: 120, color: 'blue', text: 'Architecture système, data & métriques de performance' },
+      { id: 's16', x: 2374, y: 550, w: 248, h: 120, color: 'blue', text: 'Discovery continu & cadrage orienté valeur' },
+
+      { id: 's17', x: 2656, y: 410, w: 248, h: 120, color: 'green', text: 'Des objectifs business clairs co-construits en amont' },
+      { id: 's18', x: 2656, y: 550, w: 248, h: 120, color: 'green', text: 'Des décisions rapides sur les arbitrages de périmètre' },
+
+      // --- FRAME 3 : Organisation & Transverses (x=3100..4780) ---
+      // Bloc A : Fonctionne bien (Vert) vs Moins bien (Rose)
+      { id: 's19', x: 3150, y: 375, w: 274, h: 115, color: 'green', text: 'Proximité quotidienne avec les équipes Engineering' },
+      { id: 's20', x: 3150, y: 510, w: 274, h: 115, color: 'green', text: 'Rituels d’équipe réguliers et transparence' },
+
+      { id: 's21', x: 3478, y: 375, w: 274, h: 115, color: 'pink', text: 'Animations transverses portées en plus sans bande passante dédiée' },
+      { id: 's22', x: 3478, y: 510, w: 274, h: 115, color: 'pink', text: 'Arbitrages parfois en silo sur les composants communs' },
+
+      // Bloc A bas : Principes & tests (Bleu)
+      { id: 's23', x: 3150, y: 940, w: 295, h: 105, color: 'blue', text: 'Principe #1 : Un binôme référent identifié par sujet transverse' },
+      { id: 's24', x: 3465, y: 940, w: 295, h: 105, color: 'blue', text: 'Test #1 : Point mensuel de synchronisation des 6 animations' },
+
+      // Bloc B : Exemple pré-rempli sur la ligne 1 de la matrice (Animation Run)
+      { id: 's25', x: 4045, y: 345, w: 215, h: 86, color: 'yellow', text: 'Réduire les incidents récurrents & fluidifier le support' },
+      { id: 's26', x: 4278, y: 345, w: 145, h: 86, color: 'blue', text: 'Référent Run + Lead Tech' },
+
+      // --- FRAME 4 : Vision 2027 (x=4920..6400) ---
+      // Étape 1 : Impacts (Vert)
+      { id: 's27', x: 4974, y: 375, w: 350, h: 110, color: 'green', text: 'Parcours sans couture et temps de réponse divisé par 2' },
+      { id: 's28', x: 4974, y: 785, w: 350, h: 110, color: 'green', text: 'Time-to-market accéléré grâce aux composants partagés' },
+
+      // Étape 2 : Ambitions (Jaune)
+      { id: 's29', x: 5430, y: 375, w: 350, h: 110, color: 'yellow', text: 'Devenir la référence produit de notre domaine d’ici fin 2027' },
+      { id: 's30', x: 5430, y: 785, w: 350, h: 110, color: 'yellow', text: 'Feuilles de route différenciées par maturité produit' },
+
+      // --- FRAME 5 : IA (x=6540..8060) ---
+      // Col 1 : Produits
+      { id: 's31', x: 6584, y: 345, w: 255, h: 115, color: 'yellow', text: 'Recherche et recommandation assistées par IA générative' },
+      { id: 's32', x: 6584, y: 480, w: 255, h: 115, color: 'green', text: 'Automatisation des tâches répétitives à faible valeur utilisateur' },
+
+      // Col 2 : Pratiques PM
+      { id: 's33', x: 6895, y: 345, w: 255, h: 115, color: 'yellow', text: 'Synthèse automatique des verbatims et tests utilisateurs' },
+      { id: 's34', x: 6895, y: 480, w: 255, h: 115, color: 'blue', text: 'Prototypage rapide en Discovery avant développement' },
+
+      // Col 3 : Risques
+      { id: 's35', x: 7206, y: 345, w: 255, h: 115, color: 'pink', text: 'Fiabilité des réponses (hallucinations) & protection des données' },
+      { id: 's36', x: 7206, y: 480, w: 255, h: 115, color: 'pink', text: 'Éviter l’effet gadget : toujours partir d’un irritant réel' },
+
+      // Matrice 2x2 échantillons
+      { id: 's37', x: 7810, y: 345, w: 195, h: 90, color: 'green', text: 'Synthèse IA Discovery (Quick Win)' },
+      { id: 's38', x: 7575, y: 355, w: 195, h: 90, color: 'yellow', text: 'Copilote intégré dans le produit' },
+
+      // --- FRAME 6 : Clôture (x=8200..9480) ---
+      { id: 's39', x: 8246, y: 335, w: 355, h: 110, color: 'pink', text: 'Les réunions de synchro sans décision claire à la sortie' },
+      { id: 's40', x: 8663, y: 335, w: 355, h: 110, color: 'green', text: 'Partager nos apprentissages et échecs chaque mois en collectif' },
+      { id: 's41', x: 9080, y: 335, w: 355, h: 110, color: 'blue', text: 'Challenger systématiquement la valeur avant de lancer un build' },
+
+      // --- BANDEAU BAS : Parking Lot / Frigo (x=120..2920, y=1280..1700) ---
+      { id: 's42', x: 180, y: 1410, w: 360, h: 115, color: 'yellow', text: 'Outillage commun de suivi des roadmaps inter-équipes' },
+      { id: 's43', x: 580, y: 1410, w: 360, h: 115, color: 'pink', text: 'Harmonisation des rituels trimestriels avec les sponsors' }
+    ];
+
+    /**
+     * =========================================================================
+     * 2. ÉTAT DU MOTEUR PAN & ZOOM + NAVIGATION PAR FRAME
+     * =========================================================================
+     */
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const stickyLayer = document.getElementById('sticky-layer');
+    const zoomLabel = document.getElementById('zoom-level-label');
+    const minimapViewport = document.getElementById('minimap-viewport');
+
+    let camera = {
+      x: 0,
+      y: 0,
+      scale: 0.15
+    };
+
+    const MIN_SCALE = 0.08;
+    const MAX_SCALE = 1.6;
+
+    // Coordonnées cibles pour chaque bouton de navigation
+    const NAV_TARGETS = {
+      overview: { x: 40,   y: 40,   w: 9520, h: 1740 },
+      frame1:   { x: 90,   y: 90,   w: 1240, h: 1140 },
+      frame2:   { x: 1410, y: 90,   w: 1580, h: 1140 },
+      frame3:   { x: 3070, y: 90,   w: 1740, h: 1140 },
+      frame4:   { x: 4890, y: 90,   w: 1540, h: 1140 },
+      frame5:   { x: 6510, y: 90,   w: 1580, h: 1140 },
+      frame6:   { x: 8170, y: 90,   w: 1340, h: 1140 },
+      banners:  { x: 90,   y: 1240, w: 9420, h: 500  }
+    };
+
+    function applyCamera(smooth = false) {
+      if (smooth) {
+        world.classList.add('smooth-camera');
+      } else {
+        world.classList.remove('smooth-camera');
+      }
+      world.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+
+      // Mise à jour de la grille à points du fond pour un effet spatial naturel
+      const gridSize = 28 * camera.scale;
+      viewport.style.backgroundSize = `${gridSize}px ${gridSize}px`;
+      viewport.style.backgroundPosition = `${camera.x}px ${camera.y}px`;
+
+      // Pourcentage affiché
+      zoomLabel.textContent = `${Math.round(camera.scale * 100)}%`;
+
+      // Mise à jour de la mini-map
+      updateMinimap();
+    }
+
+    function updateMinimap() {
+      const boardW = 9600;
+      const boardH = 1800;
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+
+      const leftWorld = -camera.x / camera.scale;
+      const topWorld = -camera.y / camera.scale;
+      const widthWorld = vw / camera.scale;
+      const heightWorld = vh / camera.scale;
+
+      const leftPct = Math.max(0, Math.min(100, (leftWorld / boardW) * 100));
+      const topPct = Math.max(0, Math.min(100, (topWorld / boardH) * 100));
+      const widthPct = Math.max(4, Math.min(100 - leftPct, (widthWorld / boardW) * 100));
+      const heightPct = Math.max(4, Math.min(100 - topPct, (heightWorld / boardH) * 100));
+
+      minimapViewport.style.left = `${leftPct}%`;
+      minimapViewport.style.top = `${topPct}%`;
+      minimapViewport.style.width = `${widthPct}%`;
+      minimapViewport.style.height = `${heightPct}%`;
+    }
+
+    function focusTarget(targetKey) {
+      const box = NAV_TARGETS[targetKey] || NAV_TARGETS.overview;
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const padding = 32;
+
+      const scaleX = (vw - padding * 2) / box.w;
+      const scaleY = (vh - padding * 2) / box.h;
+      const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(scaleX, scaleY)));
+
+      const centerX = box.x + box.w / 2;
+      const centerY = box.y + box.h / 2;
+
+      camera.scale = nextScale;
+      camera.x = vw / 2 - centerX * nextScale;
+      camera.y = vh / 2 - centerY * nextScale;
+
+      applyCamera(true);
+
+      // Highlight bouton actif dans la barre de navigation
+      document.querySelectorAll('.nav-pill').forEach(btn => {
+        if (btn.dataset.nav === targetKey) {
+          btn.classList.remove('bg-white', 'text-[#233742]', 'text-[#1D8A9B]', 'border', 'border-slate-200');
+          btn.classList.add('bg-[#233742]', 'text-white');
+        } else {
+          btn.classList.remove('bg-[#233742]', 'text-white');
+          btn.classList.add('bg-white', 'border', 'border-slate-200');
+          btn.classList.add(btn.dataset.nav === 'banners' ? 'text-[#1D8A9B]' : 'text-[#233742]');
+        }
+      });
+    }
+
+    function zoomBy(factor, pivotX = null, pivotY = null) {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const px = pivotX !== null ? pivotX : vw / 2;
+      const py = pivotY !== null ? pivotY : vh / 2;
+
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale * factor));
+      const worldX = (px - camera.x) / camera.scale;
+      const worldY = (py - camera.y) / camera.scale;
+
+      camera.scale = newScale;
+      camera.x = px - worldX * newScale;
+      camera.y = py - worldY * newScale;
+
+      applyCamera(pivotX === null);
+    }
+
+    function zoomToOne() {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const worldX = (vw / 2 - camera.x) / camera.scale;
+      const worldY = (vh / 2 - camera.y) / camera.scale;
+
+      camera.scale = 0.85;
+      camera.x = vw / 2 - worldX * camera.scale;
+      camera.y = vh / 2 - worldY * camera.scale;
+      applyCamera(true);
+    }
+
+    // Zoom molette centré sur le pointeur
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      zoomBy(factor, px, py);
+    }, { passive: false });
+
+    // Pan à la souris sur le fond du canvas
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+
+    viewport.addEventListener('mousedown', (e) => {
+      // Ne pas démarrer le pan si on clique sur un post-it ou un texte éditable
+      if (e.target.closest('.sticky-note') || e.target.closest('[contenteditable="true"]')) return;
+      isPanning = true;
+      panStart = { x: e.clientX - camera.x, y: e.clientY - camera.y };
+      viewport.classList.add('panning');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      camera.x = e.clientX - panStart.x;
+      camera.y = e.clientY - panStart.y;
+      applyCamera(false);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        viewport.classList.remove('panning');
+      }
+    });
+
+    // Support tactile (Pan 1 doigt sur le canvas)
+    let touchPanStart = null;
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.target.closest('.sticky-note') || e.target.closest('[contenteditable="true"]')) return;
+      if (e.touches.length === 1) {
+        touchPanStart = {
+          x: e.touches[0].clientX - camera.x,
+          y: e.touches[0].clientY - camera.y
+        };
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (touchPanStart && e.touches.length === 1) {
+        camera.x = e.touches[0].clientX - touchPanStart.x;
+        camera.y = e.touches[0].clientY - touchPanStart.y;
+        applyCamera(false);
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchend', () => {
+      touchPanStart = null;
+    });
+
+    // Clic sur la mini-map pour téléporter la caméra
+    document.getElementById('minimap').addEventListener('click', (e) => {
+      const rect = document.getElementById('minimap-content').getBoundingClientRect();
+      const relX = (e.clientX - rect.left) / rect.width;
+      const relY = (e.clientY - rect.top) / rect.height;
+      const targetWorldX = relX * 9600;
+      const targetWorldY = relY * 1800;
+
+      camera.x = viewport.clientWidth / 2 - targetWorldX * camera.scale;
+      camera.y = viewport.clientHeight / 2 - targetWorldY * camera.scale;
+      applyCamera(true);
+    });
+
+    /**
+     * =========================================================================
+     * 3. GESTION DES POST-IT DRAGGABLES & ÉDITABLES
+     * =========================================================================
+     */
+    const COLOR_ORDER = ['yellow', 'green', 'pink', 'blue'];
+    let stickyCounter = 100;
+
+    function createStickyElement(data) {
+      const el = document.createElement('div');
+      el.className = `sticky-note sticky-${data.color}`;
+      el.dataset.id = data.id;
+      el.dataset.color = data.color;
+      el.style.left = `${data.x}px`;
+      el.style.top = `${data.y}px`;
+      el.style.width = `${data.w || 240}px`;
+      el.style.minHeight = `${data.h || 110}px`;
+
+      el.innerHTML = `
+        <div class="sticky-text">${escapeHtml(data.text)}</div>
+        <div class="sticky-actions flex items-center justify-between pt-2 mt-1 border-t border-black/10 text-[11px] text-slate-700">
+          <button type="button" class="btn-cycle-color hover:text-black font-bold" title="Changer la couleur">
+            <i class="fa-solid fa-palette"></i>
+          </button>
+          <span class="text-[10px] opacity-60">Double-clic : éditer</span>
+          <button type="button" class="btn-delete-sticky hover:text-rose-700 font-bold" title="Supprimer">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      `;
+
+      const textEl = el.querySelector('.sticky-text');
+
+      // Double-clic pour éditer le texte en direct
+      el.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        el.classList.add('editing');
+        textEl.contentEditable = 'true';
+        textEl.focus();
+        // Placer le curseur à la fin
+        const range = document.createRange();
+        range.selectNodeContents(textEl);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+
+      textEl.addEventListener('blur', () => {
+        el.classList.remove('editing');
+        textEl.contentEditable = 'false';
+        window.__sync && __sync.upsert(el);
+      });
+      textEl.addEventListener('input', () => window.__sync && __sync.upsertThrottled(el));
+
+      textEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          textEl.blur();
+        }
+      });
+
+      // Changement de couleur rapide
+      el.querySelector('.btn-cycle-color').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = el.dataset.color;
+        const next = COLOR_ORDER[(COLOR_ORDER.indexOf(current) + 1) % COLOR_ORDER.length];
+        el.classList.remove(`sticky-${current}`);
+        el.classList.add(`sticky-${next}`);
+        el.dataset.color = next;
+        window.__sync && __sync.upsert(el);
+      });
+
+      // Suppression du post-it
+      el.querySelector('.btn-delete-sticky').addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.__sync && __sync.remove(el.dataset.id);
+        el.remove();
+        showToast('Post-it supprimé');
+      });
+
+      // Drag & Drop du post-it dans l'espace monde
+      let isDraggingSticky = false;
+      let dragStartMouse = { x: 0, y: 0 };
+      let dragStartPos = { x: 0, y: 0 };
+
+      const startDrag = (clientX, clientY) => {
+        if (el.classList.contains('editing')) return;
+        isDraggingSticky = true;
+        el.classList.add('dragging');
+        dragStartMouse = { x: clientX, y: clientY };
+        dragStartPos = {
+          x: parseFloat(el.style.left) || 0,
+          y: parseFloat(el.style.top) || 0
+        };
+      };
+
+      const moveDrag = (clientX, clientY) => {
+        if (!isDraggingSticky) return;
+        const dx = (clientX - dragStartMouse.x) / camera.scale;
+        const dy = (clientY - dragStartMouse.y) / camera.scale;
+        el.style.left = `${Math.round(dragStartPos.x + dx)}px`;
+        el.style.top = `${Math.round(dragStartPos.y + dy)}px`;
+        window.__sync && __sync.upsertThrottled(el);
+      };
+
+      const endDrag = () => {
+        if (!isDraggingSticky) return;
+        isDraggingSticky = false;
+        el.classList.remove('dragging');
+        window.__sync && __sync.upsert(el);
+      };
+
+      el.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || el.classList.contains('editing')) return;
+        e.stopPropagation();
+        startDrag(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endDrag);
+
+      el.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button') || el.classList.contains('editing')) return;
+        if (e.touches.length === 1) {
+          e.stopPropagation();
+          startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchmove', (e) => {
+        if (isDraggingSticky && e.touches.length === 1) {
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchend', endDrag);
+
+      stickyLayer.appendChild(el);
+      if (window.__sync && !__sync.applying) __sync.upsert(el);
+      return el;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Rendu initial de tous les post-it de démonstration
+    INITIAL_STICKIES.forEach(createStickyElement);
+
+    /**
+     * =========================================================================
+     * 4. MODALE DE CRÉATION DE NOUVEAUX POST-IT
+     * =========================================================================
+     */
+    const stickyModal = document.getElementById('sticky-modal');
+    const modalText = document.getElementById('modal-sticky-text');
+    let selectedModalColor = 'yellow';
+
+    function openStickyModal(defaultColor = 'yellow') {
+      selectedModalColor = defaultColor;
+      updateModalColorUI();
+      modalText.value = '';
+      stickyModal.classList.remove('hidden');
+      setTimeout(() => modalText.focus(), 50);
+    }
+
+    function closeStickyModal() {
+      stickyModal.classList.add('hidden');
+    }
+
+    function updateModalColorUI() {
+      document.querySelectorAll('.color-choice').forEach(btn => {
+        const isSelected = btn.dataset.color === selectedModalColor;
+        btn.style.borderColor = isSelected ? '#233742' : 'transparent';
+      });
+    }
+
+    document.querySelectorAll('.color-choice').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedModalColor = btn.dataset.color;
+        updateModalColorUI();
+      });
+    });
+
+    document.getElementById('btn-open-sticky-modal').addEventListener('click', () => openStickyModal('yellow'));
+    document.getElementById('btn-close-sticky-modal').addEventListener('click', closeStickyModal);
+    document.getElementById('btn-cancel-sticky').addEventListener('click', closeStickyModal);
+
+    function spawnStickyAtViewportCenter(color, text) {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const offset = (stickyCounter % 5) * 24;
+      const worldX = (vw / 2 - camera.x) / camera.scale - 120 + offset;
+      const worldY = (vh / 2 - camera.y) / camera.scale - 55 + offset;
+
+      stickyCounter++;
+      createStickyElement({
+        id: `user-s-${stickyCounter}`,
+        x: Math.round(worldX),
+        y: Math.round(worldY),
+        w: 245,
+        h: 115,
+        color,
+        text: text.trim() || 'Nouvelle idée...'
+      });
+      showToast('Post-it ajouté au centre de votre vue');
+    }
+
+    function quickSpawnSticky(color) {
+      openStickyModal(color);
+    }
+
+    document.getElementById('btn-confirm-sticky').addEventListener('click', () => {
+      spawnStickyAtViewportCenter(selectedModalColor, modalText.value);
+      closeStickyModal();
+    });
+
+    modalText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        spawnStickyAtViewportCenter(selectedModalColor, modalText.value);
+        closeStickyModal();
+      }
+    });
+
+    // Double-clic sur une case placeholder de la matrice Atelier 2 pour y poser un post-it directement
+    document.querySelectorAll('.sticky-placeholder').forEach(slot => {
+      slot.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const rect = slot.getBoundingClientRect();
+        const vpRect = viewport.getBoundingClientRect();
+        const worldX = (rect.left - vpRect.left - camera.x) / camera.scale;
+        const worldY = (rect.top - vpRect.top - camera.y) / camera.scale;
+        const worldW = rect.width / camera.scale;
+        const worldH = rect.height / camera.scale;
+
+        stickyCounter++;
+        const note = createStickyElement({
+          id: `matrix-s-${stickyCounter}`,
+          x: Math.round(worldX),
+          y: Math.round(worldY),
+          w: Math.max(140, Math.round(worldW)),
+          h: Math.max(76, Math.round(worldH)),
+          color: 'blue',
+          text: 'À compléter...'
+        });
+        note.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      });
+    });
+
+    /**
+     * =========================================================================
+     * 5. MINUTEUR VISUEL D'ANIMATION
+     * =========================================================================
+     */
+    const timerPopover = document.getElementById('timer-popover');
+    const timerDisplay = document.getElementById('timer-display');
+    const timerBigDisplay = document.getElementById('timer-big-display');
+    const timerStatusBadge = document.getElementById('timer-status-badge');
+    const btnTimerStart = document.getElementById('btn-timer-start');
+
+    let timerInitialSeconds = 20 * 60;
+    let timerRemainingSeconds = 20 * 60;
+    let timerInterval = null;
+
+    document.getElementById('btn-toggle-timer').addEventListener('click', (e) => {
+      e.stopPropagation();
+      timerPopover.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!timerPopover.contains(e.target) && !e.target.closest('#btn-toggle-timer')) {
+        timerPopover.classList.add('hidden');
+      }
+    });
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function renderTimer() {
+      const formatted = formatTime(timerRemainingSeconds);
+      timerDisplay.textContent = formatted;
+      timerBigDisplay.textContent = formatted;
+    }
+
+    function setTimerMinutes(mins) {
+      stopTimerInterval();
+      timerInitialSeconds = mins * 60;
+      timerRemainingSeconds = mins * 60;
+      timerStatusBadge.textContent = 'Prêt';
+      timerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600';
+      btnTimerStart.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Démarrer';
+      renderTimer();
+    }
+
+    function stopTimerInterval() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function toggleTimerRun() {
+      if (timerInterval) {
+        stopTimerInterval();
+        timerStatusBadge.textContent = 'En pause';
+        timerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800';
+        btnTimerStart.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Reprendre';
+      } else {
+        if (timerRemainingSeconds <= 0) timerRemainingSeconds = timerInitialSeconds;
+        timerStatusBadge.textContent = 'En cours';
+        timerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800';
+        btnTimerStart.innerHTML = '<i class="fa-solid fa-pause mr-1"></i> Pause';
+
+        timerInterval = setInterval(() => {
+          if (timerRemainingSeconds > 0) {
+            timerRemainingSeconds--;
+            renderTimer();
+          } else {
+            stopTimerInterval();
+            timerStatusBadge.textContent = 'Terminé !';
+            timerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800';
+            btnTimerStart.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Relancer';
+            showToast('⏰ Temps écoulé pour cette séquence !');
+          }
+        }, 1000);
+      }
+    }
+
+    function resetTimer() {
+      stopTimerInterval();
+      timerRemainingSeconds = timerInitialSeconds;
+      timerStatusBadge.textContent = 'Prêt';
+      timerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600';
+      btnTimerStart.innerHTML = '<i class="fa-solid fa-play mr-1"></i> Démarrer';
+      renderTimer();
+    }
+
+    /**
+     * =========================================================================
+     * 6. NOTIFICATIONS TOAST & RACCOURCIS CLAVIER
+     * =========================================================================
+     */
+    let toastTimeout = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.style.opacity = '0';
+      }, 2600);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.target.isContentEditable || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+      if (e.key === '+' || e.key === '=') zoomBy(1.2);
+      if (e.key === '-') zoomBy(0.82);
+      if (e.key === '0') focusTarget('overview');
+    });
+
+    window.addEventListener('resize', () => {
+      updateMinimap();
+    });
+
+    // Initialisation au chargement : afficher la Vue globale panoramique
+    window.addEventListener('load', () => {
+      focusTarget('overview');
+      // Retirer la transition initiale pour un cadrage instantané au premier affichage
+      world.classList.remove('smooth-camera');
+    });
+  </script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script>
+  /* === SYNC TEMPS REEL (Firebase Realtime Database) === */
+  const FIREBASE_CONFIG = {
+    apiKey: "REMPLACER",
+    authDomain: "REMPLACER.firebaseapp.com",
+    databaseURL: "https://REMPLACER-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "REMPLACER"
+  };
+  const ROOM = new URLSearchParams(location.search).get('room') || 'atelier';
+  (() => {
+    const badge = document.createElement('div');
+    badge.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;background:#233742;color:#fff;font:600 12px Montserrat,sans-serif;padding:6px 12px;border-radius:12px 18px 12px 12px;opacity:.9';
+    badge.textContent = 'Connexion…'; document.body.appendChild(badge);
+    if (FIREBASE_CONFIG.apiKey === 'REMPLACER') { badge.textContent = 'Mode local (Firebase non configuré)'; return; }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const db = firebase.database();
+    const root = db.ref('rooms/' + ROOM);
+    const sync = window.__sync = { applying: false, timers: {} };
+    const ser = el => ({ id: el.dataset.id, x: parseFloat(el.style.left)||0, y: parseFloat(el.style.top)||0,
+      w: parseFloat(el.style.width)||240, h: parseFloat(el.style.minHeight)||110, color: el.dataset.color,
+      text: el.querySelector('.sticky-text').textContent });
+    sync.upsert = el => root.child('stickies/' + el.dataset.id).set(ser(el));
+    sync.upsertThrottled = el => { if (sync.timers[el.dataset.id]) return;
+      sync.timers[el.dataset.id] = setTimeout(() => { delete sync.timers[el.dataset.id]; sync.upsert(el); }, 80); };
+    sync.remove = id => root.child('stickies/' + id).remove();
+    const find = id => [...document.querySelectorAll('#sticky-layer .sticky-note')].find(e => e.dataset.id === id);
+    const apply = s => {
+      if (!s) return;
+      sync.applying = true;
+      const el = find(s.id);
+      if (!el) createStickyElement(s);
+      else {
+        if (!el.classList.contains('dragging')) { el.style.left = s.x + 'px'; el.style.top = s.y + 'px'; }
+        el.style.width = s.w + 'px'; el.style.minHeight = s.h + 'px';
+        if (el.dataset.color !== s.color) { el.classList.remove('sticky-' + el.dataset.color); el.classList.add('sticky-' + s.color); el.dataset.color = s.color; }
+        const t = el.querySelector('.sticky-text');
+        if (!el.classList.contains('editing') && t.textContent !== s.text) t.textContent = s.text;
+      }
+      sync.applying = false;
+    };
+    // Retire les post-its de la maquette locale : la base fait foi
+    const local = [...document.querySelectorAll('#sticky-layer .sticky-note')].map(ser);
+    document.querySelectorAll('#sticky-layer .sticky-note').forEach(e => e.remove());
+    // Seed unique (transaction) si la room est vide
+    root.child('seeded').transaction(v => v ? undefined : true, (err, committed) => {
+      if (committed) { const o = {}; local.forEach(s => o[s.id] = s); root.child('stickies').update(o); }
+    });
+    root.child('stickies').on('child_added', sn => apply(sn.val()));
+    root.child('stickies').on('child_changed', sn => apply(sn.val()));
+    root.child('stickies').on('child_removed', sn => { const e = find(sn.key); if (e) e.remove(); });
+    // Présence
+    const me = db.ref('rooms/' + ROOM + '/presence').push();
+    db.ref('.info/connected').on('value', sn => { if (sn.val()) { me.onDisconnect().remove(); me.set(true); } });
+    root.child('presence').on('value', sn => { const n = sn.numChildren();
+      badge.textContent = '● ' + n + ' connecté' + (n > 1 ? 's' : ''); });
+  })();
+  </script>
+</body>
+</html>
