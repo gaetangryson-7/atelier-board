@@ -1880,17 +1880,17 @@
   <script>
   /* === SYNC TEMPS REEL (Firebase Realtime Database) === */
   const FIREBASE_CONFIG = {
-    apiKey: "REMPLACER",
-    authDomain: "REMPLACER.firebaseapp.com",
-    databaseURL: "https://REMPLACER-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "REMPLACER"
+    apiKey: "AIzaSyA580Vs_tvQ8kA_wGf0cYJUi0ChrEMm4Ys",
+    authDomain: "atelier-board-pm.firebaseapp.com",
+    databaseURL: "https://atelier-board-pm-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "atelier-board-pm"
   };
   const ROOM = new URLSearchParams(location.search).get('room') || 'atelier';
   (() => {
     const badge = document.createElement('div');
     badge.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;background:#233742;color:#fff;font:600 12px Montserrat,sans-serif;padding:6px 12px;border-radius:12px 18px 12px 12px;opacity:.9';
     badge.textContent = 'Connexion…'; document.body.appendChild(badge);
-    if (FIREBASE_CONFIG.apiKey === 'REMPLACER') { badge.textContent = 'Mode local (Firebase non configuré)'; return; }
+    if (false) { badge.textContent = 'Mode local (Firebase non configuré)'; return; }
     firebase.initializeApp(FIREBASE_CONFIG);
     const db = firebase.database();
     const root = db.ref('rooms/' + ROOM);
