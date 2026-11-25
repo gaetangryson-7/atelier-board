@@ -159,6 +159,17 @@
     .sticky-actions {
       opacity: 0;
       transition: opacity 0.15s ease;
+      position: absolute;
+      left: 10px; right: 22px; bottom: 3px;
+      margin: 0 !important; padding-top: 0 !important; border-top: 0 !important;
+    }
+    .sticky-note { padding: 10px 12px 22px !important; overflow: hidden; }
+    .sticky-note.compact { font-size: 12px; line-height: 1.25; padding: 6px 8px 18px !important; }
+    .sticky-note.compact .sticky-actions span { display: none; }
+    .sticky-resize {
+      position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize;
+      background: linear-gradient(135deg, transparent 50%, rgba(35,55,66,.45) 50%);
+      border-radius: 0 0 4px 0; z-index: 5; touch-action: none;
     }
     .sticky-note:hover .sticky-actions {
       opacity: 1;
@@ -1251,8 +1262,8 @@
       { id: 's24', x: 3465, y: 940, w: 295, h: 105, color: 'blue', text: 'Test #1 : Point mensuel de synchronisation des 6 animations' },
 
       // Bloc B : Exemple pré-rempli sur la ligne 1 de la matrice (Animation Run)
-      { id: 's25', x: 4045, y: 345, w: 215, h: 86, color: 'yellow', text: 'Réduire les incidents récurrents & fluidifier le support' },
-      { id: 's26', x: 4278, y: 345, w: 145, h: 86, color: 'blue', text: 'Référent Run + Lead Tech' },
+      { id: 's25', x: 4043, y: 370, w: 220, h: 100, color: 'yellow', text: 'Réduire les incidents récurrents & fluidifier le support' },
+      { id: 's26', x: 4276, y: 370, w: 142, h: 100, color: 'blue', text: 'Référent Run + Lead Tech' },
 
       // --- FRAME 4 : Vision 2027 (x=4920..6400) ---
       // Étape 1 : Impacts (Vert)
@@ -1530,6 +1541,24 @@
       `;
 
       const textEl = el.querySelector('.sticky-text');
+      if ((data.w || 240) < 200) el.classList.add('compact');
+      const rz = document.createElement('div');
+      rz.className = 'sticky-resize'; rz.title = 'Redimensionner';
+      el.appendChild(rz);
+      rz.addEventListener('mousedown', (e) => {
+        e.stopPropagation(); e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        const sw = el.offsetWidth, sh = el.offsetHeight;
+        const mv = (ev) => {
+          const nw = Math.max(90, Math.round(sw + (ev.clientX - sx) / camera.scale));
+          const nh = Math.max(50, Math.round(sh + (ev.clientY - sy) / camera.scale));
+          el.style.width = nw + 'px'; el.style.minHeight = nh + 'px';
+          el.classList.toggle('compact', nw < 200);
+          window.__sync && __sync.upsertThrottled(el);
+        };
+        const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); window.__sync && __sync.upsert(el); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      });
 
       // Double-clic pour éditer le texte en direct
       el.addEventListener('dblclick', (e) => {
@@ -1611,7 +1640,7 @@
       };
 
       el.addEventListener('mousedown', (e) => {
-        if (e.target.closest('button') || el.classList.contains('editing')) return;
+        if (e.target.closest('button') || e.target.closest('.sticky-resize') || el.classList.contains('editing')) return;
         e.stopPropagation();
         startDrag(e.clientX, e.clientY);
       });
@@ -1740,8 +1769,8 @@
           id: `matrix-s-${stickyCounter}-${Math.random().toString(36).slice(2,7)}`,
           x: Math.round(worldX),
           y: Math.round(worldY),
-          w: Math.max(140, Math.round(worldW)),
-          h: Math.max(76, Math.round(worldH)),
+          w: Math.round(worldW),
+          h: Math.round(worldH),
           color: 'blue',
           text: 'À compléter...'
         });

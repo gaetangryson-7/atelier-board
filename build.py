@@ -3,6 +3,54 @@ def rep(old, new):
     global s
     assert s.count(old) == 1, old
     s = s.replace(old, new)
+
+# --- Correctifs taille / redimensionnement ---
+rep("    .sticky-actions {\n      opacity: 0;\n      transition: opacity 0.15s ease;\n    }",
+"""    .sticky-actions {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      position: absolute;
+      left: 10px; right: 22px; bottom: 3px;
+      margin: 0 !important; padding-top: 0 !important; border-top: 0 !important;
+    }
+    .sticky-note { padding: 10px 12px 22px !important; overflow: hidden; }
+    .sticky-note.compact { font-size: 12px; line-height: 1.25; padding: 6px 8px 18px !important; }
+    .sticky-note.compact .sticky-actions span { display: none; }
+    .sticky-resize {
+      position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize;
+      background: linear-gradient(135deg, transparent 50%, rgba(35,55,66,.45) 50%);
+      border-radius: 0 0 4px 0; z-index: 5; touch-action: none;
+    }""")
+rep("      const textEl = el.querySelector('.sticky-text');\n",
+"""      const textEl = el.querySelector('.sticky-text');
+      if ((data.w || 240) < 200) el.classList.add('compact');
+      const rz = document.createElement('div');
+      rz.className = 'sticky-resize'; rz.title = 'Redimensionner';
+      el.appendChild(rz);
+      rz.addEventListener('mousedown', (e) => {
+        e.stopPropagation(); e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        const sw = el.offsetWidth, sh = el.offsetHeight;
+        const mv = (ev) => {
+          const nw = Math.max(90, Math.round(sw + (ev.clientX - sx) / camera.scale));
+          const nh = Math.max(50, Math.round(sh + (ev.clientY - sy) / camera.scale));
+          el.style.width = nw + 'px'; el.style.minHeight = nh + 'px';
+          el.classList.toggle('compact', nw < 200);
+          window.__sync && __sync.upsertThrottled(el);
+        };
+        const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); window.__sync && __sync.upsert(el); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      });
+""")
+rep("if (e.target.closest('button') || el.classList.contains('editing')) return;\n        e.stopPropagation();\n        startDrag(e.clientX, e.clientY);",
+    "if (e.target.closest('button') || e.target.closest('.sticky-resize') || el.classList.contains('editing')) return;\n        e.stopPropagation();\n        startDrag(e.clientX, e.clientY);")
+# cases de la matrice : le post-it épouse exactement la case
+rep("w: Math.max(140, Math.round(worldW)),\n          h: Math.max(76, Math.round(worldH)),",
+    "w: Math.round(worldW),\n          h: Math.round(worldH),")
+# exemples pré-remplis alignés sur la case de la ligne 1
+rep("{ id: 's25', x: 4045, y: 345, w: 215, h: 86,", "{ id: 's25', x: 4043, y: 370, w: 220, h: 100,")
+rep("{ id: 's26', x: 4278, y: 345, w: 145, h: 86,", "{ id: 's26', x: 4276, y: 370, w: 142, h: 100,")
+
 rep("""        el.classList.remove('editing');
         textEl.contentEditable = 'false';
       });""", """        el.classList.remove('editing');
